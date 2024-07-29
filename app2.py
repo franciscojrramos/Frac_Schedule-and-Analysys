@@ -81,15 +81,24 @@ if uploaded_file is not None:
         # Streamlit input for parameters
         st.sidebar.header("Parameters")
         rurd_duration = st.sidebar.number_input(label="RURD DURATION (Days)", min_value=0.0, max_value=10.0, value=2.0, step=0.1, key='rurd_duration')
-        batch_fracing_factor = st.sidebar.slider("Batch Frac'ing (if same site)", min_value=0.0, max_value=1.0, value=0.5, step=0.1)
         
+        # Toggle for Batch Frac'ing
+        enable_batch_frac = st.sidebar.checkbox("Enable Batch Frac'ing", value=True)
+        if enable_batch_frac:
+            batch_fracing_factor = st.sidebar.slider("Batch Frac'ing (if same site)", min_value=0.0, max_value=1.0, value=0.5, step=0.1)
+
         # Choice for calculation type
         st.sidebar.header("Calculation Type")
         use_stages = st.sidebar.checkbox("Use Stages/Day", value=True)
         use_proppant = st.sidebar.checkbox("Use Proppant/Day", value=False)
 
-        stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=5.0, step=0.1, key='stages_per_day')
-        proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=100000, step=25000, key='proppant_per_day')
+        if use_stages:
+            use_proppant = False
+        elif use_proppant:
+            use_stages = False
+
+        stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=5.0, step=0.1, key='stages_per_day', disabled=use_proppant)
+        proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=100000, step=25000, key='proppant_per_day', disabled=use_stages)
 
         # Add options to include NPT and Crew Change Out
         include_npt = st.sidebar.checkbox("Include NPT Duration", value=True)
@@ -166,7 +175,9 @@ if uploaded_file is not None:
         def calculate_crew_change_out_days(start_date, end_date, crew_change_periods, crew_change_duration):
             total_days = 0
             for period_start, period_end in crew_change_periods:
+                # Check if the job period overlaps with the crew change period
                 if start_date <= period_end and end_date >= period_start:
+                    # If the job overlaps with a crew change period, add the crew change duration
                     total_days += crew_change_duration
             return total_days
 
@@ -188,7 +199,7 @@ if uploaded_file is not None:
             for i in range(len(df)):
                 # Calculate the adjusted RURD Duration
                 if i > 0 and df.loc[i, 'Site'] == df.loc[i - 1, 'Site']:
-                    adjusted_rurd_duration = float(rurd_duration) * batch_fracing_factor
+                    adjusted_rurd_duration = float(rurd_duration) * batch_fracing_factor if enable_batch_frac else float(rurd_duration)
                 else:
                     adjusted_rurd_duration = float(rurd_duration)
 
@@ -199,10 +210,9 @@ if uploaded_file is not None:
                     crew_change_out_days = calculate_crew_change_out_days(df.loc[i, 'Job Start Date'], df.loc[i, 'End_Date'], crew_change_periods, crew_change_duration)
                     df.at[i, 'Crew Change Out'] = float(crew_change_out_days)
 
-                # Check and adjust for delays and end date
+                # Check and adjust for delays, but do not modify the Job Start Date
                 if i > 0 and df.loc[i, 'Job Start Date'] < df.loc[i - 1, 'End_Date']:
                     df.loc[i, delay_column_name] = (df.loc[i - 1, 'End_Date'] - df.loc[i, 'Job Start Date']).days
-                    df.loc[i, 'Job Start Date'] = df.loc[i - 1, 'End_Date']
                 df.loc[i, 'End_Date'] = df.loc[i, 'Job Start Date'] + pd.to_timedelta(df.loc[i, duration_column] + adjusted_rurd_duration + df.loc[i, 'NPT Duration'] + df.loc[i, 'Crew Change Out'], unit='D')
                 df.loc[i, projected_end_column_name] = df.loc[i, 'End_Date']
 
