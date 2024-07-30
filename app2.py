@@ -83,7 +83,7 @@ if uploaded_file is not None:
 
         # Streamlit input for parameters
         st.sidebar.header("Parameters")
-        rurd_duration = st.sidebar.number_input(label="RURD DURATION (Days)", min_value=0.0, max_value=10.0, value=4.9, step=0.1, key='rurd_duration')
+        rurd_duration = st.sidebar.number_input(label="RURD DURATION (Days)", min_value=0.0, max_value=10.0, value=2.0, step=0.1, key='rurd_duration')
         
         # Toggle for Batch Frac'ing
         enable_batch_frac = st.sidebar.checkbox("Enable Batch Frac'ing", value=True)
@@ -101,7 +101,7 @@ if uploaded_file is not None:
             use_stages = False
 
         stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=3.5, step=0.1, key='stages_per_day', disabled=use_proppant)
-        proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=555000, step=25000, key='proppant_per_day', disabled=use_stages)
+        proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=100000, step=25000, key='proppant_per_day', disabled=use_stages)
 
         # Add options to include NPT and Crew Change Out
         include_npt = st.sidebar.checkbox("Include NPT Duration", value=True)
@@ -131,9 +131,24 @@ if uploaded_file is not None:
         else:
             well_list = st.sidebar.multiselect("Select Well List", options=df_willow['Well List'].unique())
 
-        # Add default columns for Stages per Day and Proppant per Day
-        df_willow['Stages per Day'] = stages_per_day
-        df_willow['Proppant per Day'] = proppant_per_day
+        # Granular Analysis Toggle
+        granular_analysis = st.sidebar.checkbox("Enable Granular Analysis", value=False)
+        formations = {}
+
+        if granular_analysis:
+            # User-defined formations
+            st.sidebar.header("Formations")
+            num_formations = st.sidebar.number_input("Number of Formations", min_value=1, max_value=10, value=1, step=1, key='num_formations')
+            
+            for i in range(num_formations):
+                formation_name = st.sidebar.text_input(f"Formation Name {i+1}", key=f'formation_name_{i}')
+                if formation_name:
+                    well_names = st.sidebar.multiselect(f"Select Wells for {formation_name}", options=df_willow['Well List'].unique(), key=f'well_names_{i}')
+                    formations[formation_name] = {
+                        'wells': well_names,
+                        'stages_per_day': st.sidebar.number_input(f"Stages per Day ({formation_name})", min_value=1.0, max_value=10.0, value=5.0, step=0.1, key=f'stages_per_day_{i}'),
+                        'proppant_per_day': st.sidebar.number_input(f"Proppant per Day ({formation_name})", min_value=100000, max_value=1500000, value=100000, step=25000, key=f'proppant_per_day_{i}')
+                    }
 
         # Function to estimate durations based on stages per day
         def estimate_durations_stages(df):
@@ -221,13 +236,23 @@ if uploaded_file is not None:
 
             return df
 
+        # Assign formations to wells based on user input
+        df_willow['Formation'] = 'General'  # Default formation value
+        if granular_analysis:
+            for formation_name, details in formations.items():
+                df_willow.loc[df_willow['Well List'].isin(details['wells']), 'Formation'] = formation_name
+
+        # Update Stages per Day and Proppant per Day dynamically
+        if granular_analysis:
+            df_willow['Stages per Day'] = df_willow.apply(lambda row: formations.get(row['Formation'], {}).get('stages_per_day', stages_per_day), axis=1)
+            df_willow['Proppant per Day'] = df_willow.apply(lambda row: formations.get(row['Formation'], {}).get('proppant_per_day', proppant_per_day), axis=1)
+        else:
+            df_willow['Stages per Day'] = stages_per_day
+            df_willow['Proppant per Day'] = proppant_per_day
+
         # Apply the functions to the DataFrame based on user selection
-        if use_stages:
-            df_willow = estimate_durations_stages(df_willow.copy())
-            df_willow = check_delays(df_willow, 'Estimated_Stages_Duration', 'Delay_Stages', 'Projected_End_Stages')
-        elif use_proppant:
-            df_willow = estimate_durations_proppant(df_willow.copy())
-            df_willow = check_delays(df_willow, 'Estimated_Pump_Duration', 'Delay_Proppant', 'Projected_End_Proppant')
+        df_willow = estimate_durations_stages(df_willow) if use_stages else estimate_durations_proppant(df_willow)
+        df_willow = check_delays(df_willow, 'Estimated_Stages_Duration' if use_stages else 'Estimated_Pump_Duration', 'Delay_Stages' if use_stages else 'Delay_Proppant', 'Projected_End_Stages' if use_stages else 'Projected_End_Proppant')
 
         filtered_df = df_willow[df_willow['Well List'].isin(well_list)]
 
