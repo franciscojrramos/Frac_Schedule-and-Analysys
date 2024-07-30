@@ -78,9 +78,12 @@ if uploaded_file is not None:
         df_willow['Planned lbs of Proppant'] = pd.to_numeric(df_willow['Planned lbs of Proppant'], errors='coerce').fillna(0).astype(float)
         df_willow['Job Start Date'] = pd.to_datetime(df_willow['Job Start Date'], errors='coerce')
 
+        # Ensure the DataFrame is sorted by 'Job Start Date' before calculations
+        df_willow = df_willow.sort_values(by='Job Start Date', ascending=True).reset_index(drop=True)
+
         # Streamlit input for parameters
         st.sidebar.header("Parameters")
-        rurd_duration = st.sidebar.number_input(label="RURD DURATION (Days)", min_value=0.0, max_value=10.0, value=2.0, step=0.1, key='rurd_duration')
+        rurd_duration = st.sidebar.number_input(label="RURD DURATION (Days)", min_value=0.0, max_value=10.0, value=4.9, step=0.1, key='rurd_duration')
         
         # Toggle for Batch Frac'ing
         enable_batch_frac = st.sidebar.checkbox("Enable Batch Frac'ing", value=True)
@@ -97,8 +100,8 @@ if uploaded_file is not None:
         elif use_proppant:
             use_stages = False
 
-        stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=5.0, step=0.1, key='stages_per_day', disabled=use_proppant)
-        proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=100000, step=25000, key='proppant_per_day', disabled=use_stages)
+        stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=3.5, step=0.1, key='stages_per_day', disabled=use_proppant)
+        proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=555000, step=25000, key='proppant_per_day', disabled=use_stages)
 
         # Add options to include NPT and Crew Change Out
         include_npt = st.sidebar.checkbox("Include NPT Duration", value=True)
