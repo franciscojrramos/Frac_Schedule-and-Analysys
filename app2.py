@@ -38,17 +38,17 @@ st.title("Enhanced Frac Job Scheduling and Analysis")
 st.header("Instructions for Formatting Your Excel Sheet")
 st.markdown("""
 1. **Column Headers:** Ensure your Excel sheet has the following columns: 
-    - Well List
+    - Well name
     - Site
-    - Start (Job Start Date)
-    - Expected Stages (Planned Stages)
-    - Expected Pounds of Proppant (Planned lbs of Proppant)
+    - Job Start Date
+    - Planned Stages
+    - Planned lbs of Proppant
 2. **Data Format:** Make sure the data in each column is properly formatted:
     - **Job Start Date:** Date format (e.g., YYYY-MM-DD)
     - **Planned Stages:** Numeric
     - **Planned lbs of Proppant:** Numeric
 3. **Order of Columns:** The columns should be in the following order:
-    - Well List
+    - Well name
     - Site
     - Job Start Date
     - Planned Stages
@@ -64,22 +64,13 @@ if uploaded_file is not None:
         df_willow = pd.read_excel(uploaded_file) if uploaded_file.name.endswith(".xlsx") else pd.read_csv(uploaded_file)
         st.write("Column names:", df_willow.columns)
         
-        # Adjust column names based on actual names in your DataFrame
-        df_willow.rename(columns={
-            'Well List': 'Well List',
-            'Start': 'Job Start Date',
-            'Expected Stages': 'Planned Stages',
-            'Expected Pounds of Proppant ': 'Planned lbs of Proppant',
-            'Site': 'Site'
-        }, inplace=True)
-
+        # Ensure the DataFrame is sorted by 'Job Start Date' before calculations
+        df_willow = df_willow.sort_values(by='Job Start Date', ascending=True).reset_index(drop=True)
+        
         # Convert columns to appropriate types
         df_willow['Planned Stages'] = pd.to_numeric(df_willow['Planned Stages'], errors='coerce').fillna(0).astype(int)
         df_willow['Planned lbs of Proppant'] = pd.to_numeric(df_willow['Planned lbs of Proppant'], errors='coerce').fillna(0).astype(float)
         df_willow['Job Start Date'] = pd.to_datetime(df_willow['Job Start Date'], errors='coerce')
-
-        # Ensure the DataFrame is sorted by 'Job Start Date' before calculations
-        df_willow = df_willow.sort_values(by='Job Start Date', ascending=True).reset_index(drop=True)
 
         # Streamlit input for parameters
         st.sidebar.header("Parameters")
@@ -120,16 +111,10 @@ if uploaded_file is not None:
         # Custom Crew Change Out Duration
         if include_crew_change:
             crew_change_duration = st.sidebar.number_input(label="Crew Change Out Duration (Days per Period)", min_value=0.0, max_value=30.0, value=1.4, step=0.1)
+            crew_change_period_weeks = st.sidebar.number_input(label="Crew Change Out Period (Weeks)", min_value=1, max_value=10, value=3, step=1)
         else:
             crew_change_duration = 0
-
-        # Filter options
-        st.sidebar.header("Filter Options")
-        select_all = st.sidebar.checkbox("Select All Wells", value=True)
-        if select_all:
-            well_list = st.sidebar.multiselect("Select Well List", options=df_willow['Well List'].unique(), default=df_willow['Well List'].unique())
-        else:
-            well_list = st.sidebar.multiselect("Select Well List", options=df_willow['Well List'].unique())
+            crew_change_period_weeks = 3
 
         # Granular Analysis Toggle
         granular_analysis = st.sidebar.checkbox("Enable Granular Analysis", value=False)
@@ -143,7 +128,7 @@ if uploaded_file is not None:
             for i in range(num_formations):
                 formation_name = st.sidebar.text_input(f"Formation Name {i+1}", key=f'formation_name_{i}')
                 if formation_name:
-                    well_names = st.sidebar.multiselect(f"Select Wells for {formation_name}", options=df_willow['Well List'].unique(), key=f'well_names_{i}')
+                    well_names = st.sidebar.multiselect(f"Select Wells for {formation_name}", options=df_willow['Well name'].unique(), key=f'well_names_{i}')
                     formations[formation_name] = {
                         'wells': well_names,
                         'stages_per_day': st.sidebar.number_input(f"Stages per Day ({formation_name})", min_value=1.0, max_value=10.0, value=5.0, step=0.1, key=f'stages_per_day_{i}'),
@@ -180,13 +165,13 @@ if uploaded_file is not None:
             return total_npt / wells if wells > 0 else 0
 
         # Function to generate crew change out periods
-        def generate_crew_change_periods(year):
+        def generate_crew_change_periods(year, weeks):
             periods = []
             start_date = datetime(year, 1, 1)
             while start_date.year == year:
-                end_date = start_date + timedelta(weeks=3)
+                end_date = start_date + timedelta(weeks=weeks)
                 periods.append((start_date, end_date))
-                start_date = end_date + timedelta(weeks=3)
+                start_date = end_date + timedelta(weeks=weeks)
             return periods
 
         # Function to calculate crew change out days for a well
@@ -212,7 +197,7 @@ if uploaded_file is not None:
             if include_crew_change:
                 # Generate crew change periods for the year of the job start date
                 year = df['Job Start Date'].dt.year.mode()[0]
-                crew_change_periods = generate_crew_change_periods(year)
+                crew_change_periods = generate_crew_change_periods(year, crew_change_period_weeks)
 
             for i in range(len(df)):
                 # Calculate the adjusted RURD Duration
@@ -240,7 +225,7 @@ if uploaded_file is not None:
         df_willow['Formation'] = 'General'  # Default formation value
         if granular_analysis:
             for formation_name, details in formations.items():
-                df_willow.loc[df_willow['Well List'].isin(details['wells']), 'Formation'] = formation_name
+                df_willow.loc[df_willow['Well name'].isin(details['wells']), 'Formation'] = formation_name
 
         # Update Stages per Day and Proppant per Day dynamically
         if granular_analysis:
@@ -254,21 +239,19 @@ if uploaded_file is not None:
         df_willow = estimate_durations_stages(df_willow) if use_stages else estimate_durations_proppant(df_willow)
         df_willow = check_delays(df_willow, 'Estimated_Stages_Duration' if use_stages else 'Estimated_Pump_Duration', 'Delay_Stages' if use_stages else 'Delay_Proppant', 'Projected_End_Stages' if use_stages else 'Projected_End_Proppant')
 
-        filtered_df = df_willow[df_willow['Well List'].isin(well_list)]
-
         # Display results
         st.subheader("Calculated Durations and Delays")
-        st.write(filtered_df)
+        st.write(df_willow)
 
         st.subheader("Total Days of Delay")
-        total_delay = filtered_df['Delay_Stages'].sum() if use_stages else filtered_df['Delay_Proppant'].sum()
-        st.markdown(f"**Total Delays:** {total_delay} days")
+        total_delay = df_willow['Delay_Stages'].sum() if use_stages else df_willow['Delay_Proppant'].sum()
+        st.markdown(f"{total_delay} days")
 
         # Plot a bar chart for delays using Plotly
-        st.subheader("Total Delays For Each Well Bar Chart")
+        st.subheader("Number of Delays For Each Well")
         delay_column = 'Delay_Stages' if use_stages else 'Delay_Proppant'
-        fig = px.bar(filtered_df, x='Well List', y=delay_column, title='Delays per Well',
-                     labels={delay_column:'Delay (days)', 'Well List':'Well List'},
+        fig = px.bar(df_willow, x='Well name', y=delay_column, title='Delays per Well',
+                     labels={delay_column:'Delay (days)', 'Well name':'Well name'},
                      color=delay_column, color_continuous_scale=px.colors.sequential.Inferno)
         fig.update_layout(xaxis_title="Well", yaxis_title="Delay (days)",
                           xaxis=dict(tickfont=dict(size=15, color='black')),
@@ -278,8 +261,8 @@ if uploaded_file is not None:
         # Gantt Chart for Job Schedule and Delays using Plotly
         st.subheader("Gantt Chart - Job Schedule")
         end_column = 'Projected_End_Stages' if use_stages else 'Projected_End_Proppant'
-        fig_gantt = px.timeline(filtered_df, x_start="Job Start Date", x_end=end_column, y="Well List",
-                                color="Well List", hover_data=[delay_column], title="Job Schedule and Delays")
+        fig_gantt = px.timeline(df_willow, x_start="Job Start Date", x_end=end_column, y="Well name",
+                                color="Well name", hover_data=[delay_column], title="Job Schedule and Delays")
         fig_gantt.update_layout(xaxis_title="Date", yaxis_title="Well", yaxis=dict(autorange="reversed", tickfont=dict(size=15, color='black')))
         st.plotly_chart(fig_gantt)
 
@@ -287,7 +270,7 @@ if uploaded_file is not None:
         st.subheader("Download Updated Job Schedule")
         buffer = io.BytesIO()
         
-        filtered_df.to_csv(buffer, index=False)
+        df_willow.to_csv(buffer, index=False)
         
         buffer.seek(0)
         
