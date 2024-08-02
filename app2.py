@@ -100,7 +100,7 @@ if uploaded_file is not None:
         elif use_proppant:
             use_stages = False
 
-        stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=3.5, step=0.1, key='stages_per_day', disabled=use_proppant)
+        stages_per_day = st.sidebar.number_input(label="Stages/Day", min_value=1.0, max_value=10.0, value=5.0, step=0.1, key='stages_per_day', disabled=use_proppant)
         proppant_per_day = st.sidebar.number_input(label="Proppant/Day", min_value=100000, max_value=1500000, value=100000, step=25000, key='proppant_per_day', disabled=use_stages)
 
         # Add options to include NPT and Crew Change Out
